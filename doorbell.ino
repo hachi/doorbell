@@ -1,8 +1,15 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <EthernetUdp.h>
+#include <avr/wdt.h>
 
 #include "config.h"
+
+#define CMD_BRIGHTNESS "brightness "
+#define CMD_PULSE      "pulse "
+#define CMD_WDRESET    "wdreset"
+#define CMD_WDENABLE   "wdenable"
+#define CMD_AUTOPULSE  "autopulse "
 
 IPAddress localAddr(0, 0, 0, 0);
 IPAddress localMask(0, 0, 0, 0);
@@ -11,17 +18,23 @@ IPAddress castAddr(0, 0, 0, 0);
 EthernetUDP sock;
 char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
 
-volatile long blink_until = 0;
+volatile unsigned int auto_pulse = 0;
+
+volatile unsigned long pulse_start = 0;
+volatile unsigned long pulse_until = 0;
+
+volatile int standing_brightness = 0;
 
 void setup() {
   Serial.begin(9600);
 
   Serial.println();
-  Serial.println("Initializing I/O...");
+  Serial.println(F("Initializing I/O..."));
 
   // When pin 9 is left as INPUT, the floating means it blinks strangely
   // with ethernet activity. Configure for output to quell that.
-  pinMode(9, OUTPUT);
+  pinMode(STATUS_PIN, OUTPUT);
+  analogWrite(STATUS_PIN, 0);
 
   // PWM Output for the LED Ring on the doorbell.
   pinMode(VISUAL_PIN, OUTPUT);
@@ -31,26 +44,32 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), fire, CHANGE);
 
-  Serial.println("...done");
+  Serial.println(F("...done"));
 
 
-  Serial.println("Initializing Ethernet...");
+  Serial.println(F("Initializing Ethernet..."));
   int backoff = 1;
   while (true) {
-    Serial.println("Trying to get an IP address using DHCP.");
+    analogWrite(STATUS_PIN, 15);
+    Serial.println(F("Trying to get an IP address using DHCP."));
     if (Ethernet.begin(mac))
       break;
-    Serial.print("Failed. Pausing for ");
+    Serial.print(F("Failed. Pausing for "));
     Serial.print(backoff, DEC);
-    Serial.println(" seconds and retrying.");
-    
+    Serial.println(F(" seconds and retrying."));
+
+    analogWrite(STATUS_PIN, 1);
+
     delay(backoff * 1000);
     if (backoff < 60)
       backoff *= 2;
   }
   
-  Serial.println("...done");
+  Serial.println(F("...done"));
 
+  analogWrite(STATUS_PIN, 255);
+  delay(300);
+  analogWrite(STATUS_PIN, 0);
   
   gotip();
 }
@@ -62,17 +81,18 @@ void printDottedQuad(IPAddress data) {
   Serial.print('.');
   Serial.print(data[2], DEC);
   Serial.print('.');
+  Serial.print(data[3], DEC);
 }
 
 void gotip() {
   localAddr = Ethernet.localIP();
   localMask = Ethernet.subnetMask();
 
-  Serial.print("Address: ");
+  Serial.print(F("Address: "));
   printDottedQuad(localAddr);
   Serial.println();
 
-  Serial.print("Netmask: ");
+  Serial.print(F("Netmask: "));
   printDottedQuad(localMask);
   Serial.println();
   
@@ -83,7 +103,7 @@ void gotip() {
     );
   }
   
-  Serial.print("Broadcast: ");
+  Serial.print(F("Broadcast: "));
   printDottedQuad(castAddr);
   Serial.println();
 
@@ -103,7 +123,6 @@ void fire() {
   if (debounce_until > now)
     return;
   if (value == LOW) {
-    blink_until = now + 15000;
     ring();
   }
 
@@ -133,25 +152,57 @@ void maintain_ethernet() {
 }
 
 void loop() {
+  int final_delay = 50;
 
-  long now = millis();
+  if (pulse_until != 0 || pulse_start != 0) {
+    unsigned long now = millis();
   
-  if (now < blink_until) {
-    
+    if (pulse_until <= now) {
+      Serial.println("Done pulsing");
+      pulse_until = 0;
+      pulse_start = 0;
+      Serial.print("Resetting output to standing value of ");
+      Serial.print(standing_brightness, DEC);
+      Serial.println();
+      analogWrite(VISUAL_PIN, standing_brightness);
+      analogWrite(STATUS_PIN, standing_brightness);
+    } else {
+      final_delay = 0;
+
+      unsigned int x = (now - pulse_start) % 1000;
+/*
+      Serial.print("X=");
+      Serial.print(x, DEC);
+*/    
+      if (x >= 500)
+        x = 1000 - x;
+/*
+      Serial.print(" X'=");
+      Serial.print(x, DEC);
+*/
+      uint8_t y = pow(2, x * 8 / 500.0) - 1;
+/*
+      Serial.print(" Y=");
+      Serial.print(y, DEC);
+      Serial.println();
+*/
+      analogWrite(VISUAL_PIN, y);
+      analogWrite(STATUS_PIN, y);
+    }
   }
   
   int packetSize = sock.parsePacket();
   if(packetSize)
   {
-    const char *prefix = "brightness ";
-    Serial.print("Received ");
+    Serial.print(F("Received "));
     Serial.print(packetSize);
-    Serial.print(" bytes from ");
+    Serial.print(F(" bytes from "));
     printDottedQuad(sock.remoteIP());
     Serial.print(':');
     Serial.print(sock.remotePort(), DEC);
     Serial.println();
     
+    memset(packetBuffer, 0, UDP_TX_PACKET_MAX_SIZE);
     sock.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);
     
     char *tokenstring = packetBuffer;
@@ -165,28 +216,70 @@ void loop() {
       Serial.print("Command: ");
       Serial.println(command);
   
-      if (strncmp(command, prefix, strlen(prefix)) == 0) {
-        char *remainder = command + strlen(prefix);
-        Serial.print("Got brightness command: ");
+      if (strncmp(command, CMD_BRIGHTNESS, sizeof(CMD_BRIGHTNESS - 1)) == 0) {
+        char *remainder = command + sizeof(CMD_BRIGHTNESS) - 1;
+        Serial.print(F("Got brightness command: "));
         Serial.print(remainder);
-        Serial.print(" (");
+        Serial.print(F(" ("));
         int value = atoi(remainder);
         Serial.print(value, DEC);
         Serial.println(")");
+        standing_brightness = value;
         analogWrite(VISUAL_PIN, value);
+        analogWrite(STATUS_PIN, value);
+      } else if (strncmp(command, CMD_PULSE, sizeof(CMD_PULSE) - 1) == 0) {
+        char *remainder = command + sizeof(CMD_PULSE) - 1;
+        Serial.println(F("Got pulse command: "));
+        Serial.print(remainder);
+        Serial.print(F(" ("));
+        int value = atoi(remainder);
+        Serial.print(value, DEC);
+        Serial.println(")");
+        pulse_start = millis();
+        pulse_until = pulse_start + (value * 1000);
+        Serial.print("Pulsing starting at ");
+        Serial.print(pulse_start);
+        Serial.print(" until ");
+        Serial.print(pulse_until);
+        Serial.println();
+      } else if (strncmp(command, CMD_WDENABLE, sizeof(CMD_WDENABLE)) == 0) {
+        Serial.println(F("Enabling watchdog."));
+        wdt_enable(WDTO_8S);
+      } else if (strncmp(command,CMD_WDRESET, sizeof(CMD_WDRESET)) == 0) {
+        Serial.println(F("Resetting watchdog."));
+        wdt_reset();
+      } else if (strncmp(command,CMD_AUTOPULSE, sizeof(CMD_AUTOPULSE) - 1) == 0) {
+        char *remainder = command + sizeof(CMD_AUTOPULSE) - 1;
+        Serial.println(F("Setting automatic pulsing: "));
+        Serial.print(remainder);
+        Serial.print(F(" ("));
+        int value = atoi(remainder);
+        Serial.print(value, DEC);
+        Serial.println(")");
+        auto_pulse = value * 1000;
       } else {
-        Serial.println("Got other command");
+        Serial.println(F("Got other command"));
       }
     }
   }
   maintain_ethernet();
-  delay(50);
+  delay(final_delay);
 }
 
 void ring() {
-  Serial.println("Pushed");
+  Serial.println(F("Pushed"));
 
   sock.beginPacket(castAddr, BROADCAST_PORT);
   sock.write("ding dong\n");
   sock.endPacket();
+
+  if (auto_pulse > 0) {
+    pulse_start = millis();
+    pulse_until = pulse_start + 15000;
+    Serial.print("Auto pulse starting at ");
+    Serial.print(pulse_start);
+    Serial.print(" until ");
+    Serial.print(pulse_until);
+    Serial.println();
+  }
 }
