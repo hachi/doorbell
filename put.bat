@@ -1,0 +1,1 @@
+tftp -i 10.8.0.175 PUT "%cd%"\doorbell.ino.bin

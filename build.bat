@@ -1,0 +1,1 @@
+"C:\Program Files (x86)\Arduino\hardware\tools\avr\bin\avr-objcopy.exe" -I ihex "%cd%"\doorbell.ino.arduino_standard.hex -O binary "%cd%"\doorbell.ino.bin
