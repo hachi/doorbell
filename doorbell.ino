@@ -1,6 +1,8 @@
 #include <avr/pgmspace.h>
 #include <avr/wdt.h>
 
+#include <stdarg.h>
+
 #include <NetEEPROM.h>
 #include <NetEEPROM_defs.h>
 
@@ -8,6 +10,7 @@
 
 #include <Ethernet.h>
 #include <EthernetUdp.h>
+#include <IPAddress.h>
 
 #include <Agentuino.h>
 #include <MIB.h>
@@ -29,6 +32,9 @@ const char Description[] PROGMEM = "SNMP Doorbell";
 const char Contact[]     PROGMEM = "Jonathan Steinert";
 const char Name[]        PROGMEM = "Front Door";
 const char Location[]    PROGMEM = "Hachi's house";
+
+#define HOST_FORMAT     "%hhu.%hhu.%hhu.%hhu"
+#define HOST_OCTETS(H)  H[0], H[1], H[2], H[3]
 
 const  uint8_t brightcurve[] PROGMEM = {
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -59,15 +65,12 @@ struct {
   volatile unsigned long pulse_until = 0;
 
   volatile uint8_t standing_brightness = 0;
-} state;
 
-char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
+} state;
 
 void setup() {
   //  Serial.begin(9600);
-
-  //  Serial.println();
-  //  Serial.println(F("Initializing I/O..."));
+  debug(F("Initializing I/O..."));
 
   // When pin 9 is left as INPUT, the floating means it blinks strangely
   // with ethernet activity. Configure for output to quell that.
@@ -88,28 +91,24 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   //attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), fire, CHANGE);
 
-  //  Serial.println(F("...done"));
+  debug(F("...done"));
 
   analogWrite(RED_PIN, 64);
   delay(500);
   analogWrite(RED_PIN, 0);
 
-  //  Serial.println(F("Initializing Ethernet..."));
+  debug(F("Initializing Ethernet..."));
   analogWrite(GREEN_PIN, 64);
   int backoff = 1;
   while (true) {
     analogWrite(STATUS_PIN, 15);
-    //    Serial.println(F("Trying to get an IP address using DHCP."));
+    debug(F("Trying to get an IP address using DHCP."));
     if (Ethernet.begin(mac))
       break;
-    //    Serial.print(F("Failed. Pausing for "));
-    //    Serial.print(backoff, DEC);
-    //    Serial.println(F(" seconds and retrying."));
+    debug(F("Failed. Pausing for %d seconds and retrying."), backoff);
 
     analogWrite(STATUS_PIN, 1);
     analogWrite(RED_PIN, 64);
-
-
 
     delay(backoff * 1000);
     if (backoff < 60)
@@ -120,18 +119,18 @@ void setup() {
   analogWrite(RED_PIN, 0);
   analogWrite(GREEN_PIN, 0);
 
+  debug(F("...done"));
+  
 
-  //  Serial.println(F("...done"));
-
-  //  Serial.println(F("Initializing SNMP..."));
+  debug(F("Initializing SNMP..."));
 
   api_status = Agentuino.begin();
 
   if (api_status == SNMP_API_STAT_SUCCESS) {
     Agentuino.onPduReceive(myPduReceived);
-    //    Serial.println(F("...done"));
+    debug(F("...done"));
   } else {
-    //    Serial.println(F("..failed"));
+    debug(F("...failed"));
   }
 
   analogWrite(STATUS_PIN, 255);
@@ -141,28 +140,31 @@ void setup() {
   gotip();
 }
 
-void printDottedQuad(IPAddress data) {
-  /*  Serial.print(data[0], DEC);
-    Serial.print('.');
-    Serial.print(data[1], DEC);
-    Serial.print('.');
-    Serial.print(data[2], DEC);
-    Serial.print('.');
-    Serial.print(data[3], DEC);
-  */
+void debug(const char *msg, ... ) {
+  va_list argList;
+  char buffer[64] = { 0 };
+  va_start(argList, msg);
+  int rv = vsnprintf(buffer, sizeof(buffer), msg, argList);
+  va_end(argList);
+  
+  Agentuino.Trap(buffer, state.castAddr, locUpTime);
+  // Serial.println(buffer);
+}
+
+void debug(const __FlashStringHelper *msg, ... ) {
+  va_list argList;
+  char buffer[64] = { 0 };
+  va_start(argList, msg);
+  PGM_P p = reinterpret_cast<PGM_P>(msg);
+  int rv = vsnprintf_P(buffer, sizeof(buffer), p, argList);
+  va_end(argList);
+  
+  Agentuino.Trap(buffer, state.castAddr, locUpTime);
 }
 
 void gotip() {
   state.localAddr = Ethernet.localIP();
   state.localMask = Ethernet.subnetMask();
-
-  //  Serial.print(F("Address: "));
-  printDottedQuad(state.localAddr);
-  //  Serial.println();
-
-  //  Serial.print(F("Netmask: "));
-  printDottedQuad(state.localMask);
-  //  Serial.println();
 
   for (byte thisByte = 0; thisByte < 4; thisByte++) {
     state.castAddr[thisByte] = (
@@ -171,31 +173,18 @@ void gotip() {
                                );
   }
 
-  //  Serial.print(F("Broadcast: "));
-  printDottedQuad(state.castAddr);
-  //  Serial.println();
+  debug(F("Address: " HOST_FORMAT), HOST_OCTETS(state.localAddr));
+  debug(F("Netmask: " HOST_FORMAT), HOST_OCTETS(state.localMask));
+  debug(F("Cast: " HOST_FORMAT ":%hu"), HOST_OCTETS(state.castAddr), BROADCAST_PORT);
 
   NetEEPROM.writeNet(mac, state.localAddr, Ethernet.gatewayIP(), state.localMask);
 
   state.sock.stop();
   state.sock.begin(LISTEN_PORT);
-  char buf[16];
-
-  sprintf(buf, "%hhu.%hhu.%hhu.%hhu", state.localAddr[0], state.localAddr[1], state.localAddr[2], state.localAddr[3]);
-  Agentuino.Trap(buf, state.castAddr, locUpTime);
-
-  sprintf(buf, "%hhu.%hhu.%hhu.%hhu", state.localMask[0], state.localMask[1], state.localMask[2], state.localMask[3]);
-  Agentuino.Trap(buf, state.castAddr, locUpTime);
-
-  sprintf(buf, "%hhu.%hhu.%hhu.%hhu", state.castAddr[0], state.castAddr[1], state.castAddr[2], state.castAddr[3]);
-  Agentuino.Trap(buf, state.castAddr, locUpTime);
-
-  sprintf(buf, "%hu", BROADCAST_PORT);
-  Agentuino.Trap(buf, state.castAddr, locUpTime);
 }
 
 /*
-  void fire() {
+void fire() {
   static bool debouncing = false;
 
   static int previous = HIGH; // Initial state, pulled low for button press.
@@ -223,7 +212,7 @@ void gotip() {
 
   debounce_until = now + DEBOUNCE_DELAY;
   previous = value;
-  }
+}
 */
 
 void maintain_ethernet() {
@@ -268,12 +257,10 @@ void loop() {
     }
   } else {
     if (state.pulse_until <= now) {
-      //      Serial.println(F("Done pulsing"));
+      debug(F("Done pulsing"));
       state.pulse_until = 0;
       state.ring_at = 0;
-      //      Serial.print(F("Resetting output to standing value of "));
-      //      Serial.print(standing_brightness, DEC);
-      //      Serial.println();
+      debug(F("Resetting output to standing value of %d"), state.standing_brightness);
       analogWrite(RED_PIN,    state.standing_brightness);
       analogWrite(GREEN_PIN,  state.standing_brightness);
       analogWrite(BLUE_PIN,   state.standing_brightness);
@@ -284,10 +271,7 @@ void loop() {
       unsigned int x = (now - state.ring_at) / 2 % 512;
       unsigned int y = ((now - 333) - state.ring_at) / 2 % 512;
       unsigned int z = ((now - 667) - state.ring_at) / 2 % 512;
-      /*
-            Serial.print("X=");
-            Serial.print(x, DEC);
-      */
+ 
       if (x >= 256)  // Make the second half mirror the first
         x = 511 - x; // Bias to get 0 thru  255, rather than 0 thru 256
 
@@ -297,19 +281,11 @@ void loop() {
       if (z >= 256)
         z = 511 - z;
 
-      /*
-            Serial.print(" X'=");
-            Serial.print(x, DEC);
-      */
+
       uint8_t r = pgm_read_byte_near(brightcurve + x);
       uint8_t g = pgm_read_byte_near(brightcurve + y);
       uint8_t b = pgm_read_byte_near(brightcurve + z);
 
-      /*
-            Serial.print(" Y=");
-            Serial.print(y, DEC);
-            Serial.println();
-      */
       analogWrite(RED_PIN, r);
       analogWrite(GREEN_PIN, g);
       analogWrite(BLUE_PIN, b);
@@ -318,16 +294,12 @@ void loop() {
     }
   }
 
+  char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
   int packetSize = state.sock.parsePacket();
+  
   if (packetSize)
   {
-    //    Serial.print(F("Received "));
-    //    Serial.print(packetSize);
-    //    Serial.print(F(" bytes from "));
-    printDottedQuad(state.sock.remoteIP());
-    //    Serial.print(':');
-    //    Serial.print(sock.remotePort(), DEC);
-    //    Serial.println();
+    debug(F("Received %d bytes from " HOST_FORMAT ":%hu"), packetSize, HOST_OCTETS(state.sock.remoteIP()), state.sock.remotePort());
 
     memset(packetBuffer, 0, UDP_TX_PACKET_MAX_SIZE);
     state.sock.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);
@@ -340,17 +312,12 @@ void loop() {
 
       tokenstring = NULL;
 
-      //      Serial.print(F("Command: "));
-      //      Serial.println(command);
+      debug(F("Command: %s"), command);
 
       if (strncmp_PF(command, F(CMD_BRIGHTNESS), sizeof(CMD_BRIGHTNESS - 1)) == 0) {
         char *remainder = command + sizeof(CMD_BRIGHTNESS) - 1;
-        //        Serial.print(F("Got brightness command: "));
-        //        Serial.print(remainder);
-        //        Serial.print(F(" ("));
         int value = atoi(remainder);
-        //        Serial.print(value, DEC);
-        //        Serial.println(')');
+        debug(F("Got brightness command: %s (%d)"), remainder, value);
         state.standing_brightness = value;
         analogWrite(RED_PIN, value);
         analogWrite(GREEN_PIN, value);
@@ -358,34 +325,22 @@ void loop() {
         analogWrite(STATUS_PIN, value);
       } else if (strncmp_PF(command, F(CMD_PULSE), sizeof(CMD_PULSE) - 1) == 0) {
         char *remainder = command + sizeof(CMD_PULSE) - 1;
-        //        Serial.println(F("Got pulse command: "));
-        //        Serial.print(remainder);
-        //        Serial.print(F(" ("));
         int value = atoi(remainder);
-        //        Serial.print(value, DEC);
-        //        Serial.println(')');
+        debug(F("Got pulse command: %s (%d)"), remainder, value);
         // TODO using state.ring_at as the base for pulsing animation is probably wrong
         state.pulse_until = state.ring_at + (value * 1000);
-        //        Serial.print(F("Pulsing starting at "));
-        //        Serial.print(pulse_start);
-        //        Serial.print(F(" until "));
-        //        Serial.print(pulse_until);
-        //        Serial.println();
+        debug(F("Pusing starting at %d until %d"), state.ring_at, state.pulse_until);
       } else if (strncmp_PF(command, F(CMD_WDENABLE), sizeof(CMD_WDENABLE)) == 0) {
-        //        Serial.println(F("Enabling watchdog."));
+        debug(F("Enabling watchdog."));
         wdt_enable(WDTO_8S);
       } else if (strncmp_PF(command, F(CMD_WDRESET), sizeof(CMD_WDRESET)) == 0) {
-        //        Serial.println(F("Resetting watchdog."));
+        debug(F("Resetting watchdog."));
         wdt_reset();
         Agentuino.Trap("Arduino SNMP reset WDT", state.castAddr, locUpTime);
       } else if (strncmp_PF(command, F(CMD_AUTOPULSE), sizeof(CMD_AUTOPULSE) - 1) == 0) {
         char *remainder = command + sizeof(CMD_AUTOPULSE) - 1;
-        //        Serial.println(F("Setting automatic pulsing: "));
-        //        Serial.print(remainder);
-        //        Serial.print(F(" ("));
         int value = atoi(remainder);
-        //        Serial.print(value, DEC);
-        //        Serial.println(')');
+        debug(F("Setting automatic pulsing: %s (%d)"), remainder, value);
         state.auto_pulse = value * 1000;
       } else if (strncmp_PF(command, F(CMD_REPROGRAM), sizeof(CMD_REPROGRAM)) == 0) {
         NetEEPROM.writeImgBad();
@@ -395,7 +350,7 @@ void loop() {
       } else if (strncmp_PF(command, F(CMD_TRIGGER), sizeof(CMD_TRIGGER)) == 0) {
         ring();
       } else {
-        //        Serial.println(F("Got other command"));
+        debug(F("Got unknown command: %s"), command);
       }
     }
   }
@@ -408,7 +363,7 @@ void loop() {
 }
 
 void ring() {
-  //  Serial.println(F("Pushed"));
+  debug(F("Button Pushed"));
 
   state.sock.beginPacket(state.castAddr, BROADCAST_PORT);
   state.sock.print(F("ding dong\n"));
@@ -421,11 +376,7 @@ void ring() {
 
   if (state.auto_pulse > 0) {
     state.pulse_until = state.ring_at + 15000;
-    //    Serial.print(F("Auto pulse starting at "));
-    //    Serial.print(pulse_start);
-    //    Serial.print(F(" until "));
-    //    Serial.print(pulse_until);
-    //    Serial.println();
+    debug(F("Auto pulse starting at %d until %d"), state.ring_at, state.pulse_until);
   }
 }
 
