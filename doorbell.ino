@@ -15,6 +15,8 @@
 #include <Agentuino.h>
 #include <MIB.h>
 
+#include "LEDBrightness.h"
+
 #include "config.h"
 
 #define CMD_BRIGHTNESS "brightness "
@@ -35,25 +37,6 @@ const char Location[]    PROGMEM = "Hachi's house";
 
 #define HOST_FORMAT     "%hhu.%hhu.%hhu.%hhu"
 #define HOST_OCTETS(H)  H[0], H[1], H[2], H[3]
-
-const  uint8_t brightcurve[] PROGMEM = {
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-  3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4,
-  4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6,
-  7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 9, 10,
-  10, 10, 10, 11, 11, 11, 12, 12, 12, 12, 13, 13, 13, 14, 14, 14,
-  15, 15, 15, 16, 16, 17, 17, 17, 18, 18, 19, 19, 19, 20, 20, 21,
-  21, 22, 22, 23, 23, 24, 25, 25, 26, 26, 27, 28, 28, 29, 30, 30,
-  31, 32, 32, 33, 34, 35, 35, 36, 37, 38, 39, 40, 41, 42, 42, 43,
-  44, 45, 46, 48, 49, 50, 51, 52, 53, 54, 56, 57, 58, 59, 61, 62,
-  64, 65, 66, 68, 69, 71, 73, 74, 76, 78, 79, 81, 83, 85, 87, 89,
-  91, 93, 95, 97, 99, 101, 103, 106, 108, 111, 113, 116, 118, 121, 123, 126,
-  129, 132, 135, 138, 141, 144, 147, 150, 154, 157, 161, 164, 168, 172, 175, 179,
-  183, 187, 191, 196, 200, 204, 209, 214, 218, 223, 228, 233, 238, 244, 249, 255,
-};
 
 struct {
   IPAddress localAddr, localMask, castAddr;
@@ -282,9 +265,9 @@ void loop() {
         z = 511 - z;
 
 
-      uint8_t r = pgm_read_byte_near(brightcurve + x);
-      uint8_t g = pgm_read_byte_near(brightcurve + y);
-      uint8_t b = pgm_read_byte_near(brightcurve + z);
+      uint8_t r = brightness_to_pwm(x);
+      uint8_t g = brightness_to_pwm(y);
+      uint8_t b = brightness_to_pwm(z);
 
       analogWrite(RED_PIN, r);
       analogWrite(GREEN_PIN, g);
