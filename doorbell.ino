@@ -99,7 +99,7 @@ void setup() {
   analogWrite(GREEN_PIN, 0);
 
   debug(F("...done"));
-  
+
 
   debug(F("Initializing SNMP..."));
 
@@ -125,7 +125,7 @@ void debug(const char *msg, ... ) {
   va_start(argList, msg);
   int rv = vsnprintf(buffer, sizeof(buffer), msg, argList);
   va_end(argList);
-  
+
   Agentuino.Trap(buffer, state.castAddr, locUpTime);
   // Serial.println(buffer);
 }
@@ -137,7 +137,7 @@ void debug(const __FlashStringHelper *msg, ... ) {
   PGM_P p = reinterpret_cast<PGM_P>(msg);
   int rv = vsnprintf_P(buffer, sizeof(buffer), p, argList);
   va_end(argList);
-  
+
   Agentuino.Trap(buffer, state.castAddr, locUpTime);
 }
 
@@ -163,7 +163,7 @@ void gotip() {
 }
 
 /*
-void fire() {
+  void fire() {
   static bool debouncing = false;
 
   static int previous = HIGH; // Initial state, pulled low for button press.
@@ -191,7 +191,7 @@ void fire() {
 
   debounce_until = now + DEBOUNCE_DELAY;
   previous = value;
-}
+  }
 */
 
 void maintain_ethernet() {
@@ -250,7 +250,7 @@ void loop() {
       unsigned int x = (now - state.ring_at) / 2 % 512;
       unsigned int y = ((now - 333) - state.ring_at) / 2 % 512;
       unsigned int z = ((now - 667) - state.ring_at) / 2 % 512;
- 
+
       if (x >= 256)  // Make the second half mirror the first
         x = 511 - x; // Bias to get 0 thru  255, rather than 0 thru 256
 
@@ -275,7 +275,7 @@ void loop() {
 
   char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
   int packetSize = state.sock.parsePacket();
-  
+
   if (packetSize)
   {
     debug(F("Received %d bytes from " HOST_FORMAT ":%hu"), packetSize, HOST_OCTETS(state.sock.remoteIP()), state.sock.remotePort());
