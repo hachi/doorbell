@@ -9,7 +9,6 @@
 #include <SPI.h>
 
 #include <Ethernet.h>
-#include <EthernetUdp.h>
 #include <IPAddress.h>
 
 #include <Agentuino.h>
@@ -17,14 +16,6 @@
 #include "LEDBrightness.h"
 
 #include "config.h"
-
-#define CMD_BRIGHTNESS "brightness "
-#define CMD_PULSE      "pulse "
-#define CMD_WDRESET    "wdreset"
-#define CMD_WDENABLE   "wdenable"
-#define CMD_AUTOPULSE  "autopulse "
-#define CMD_REPROGRAM  "reprogram"
-#define CMD_TRIGGER    "trigger"
 
 const char Description[] PROGMEM = "SNMP Doorbell";
 const char Contact[]     PROGMEM = "Jonathan Steinert";
@@ -36,7 +27,6 @@ const char Location[]    PROGMEM = "Hachi's house";
 
 struct {
   IPAddress localAddr, localMask, castAddr;
-  EthernetUDP sock;
 
   volatile unsigned int auto_pulse = 0;
 
@@ -157,9 +147,6 @@ void gotip() {
   debug(F("Cast: " HOST_FORMAT ":%hu"), HOST_OCTETS(state.castAddr), BROADCAST_PORT);
 
   NetEEPROM.writeNet(mac, state.localAddr, Ethernet.gatewayIP(), state.localMask);
-
-  state.sock.stop();
-  state.sock.begin(LISTEN_PORT);
 }
 
 /*
@@ -273,67 +260,6 @@ void loop() {
     }
   }
 
-  char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
-  int packetSize = state.sock.parsePacket();
-
-  if (packetSize)
-  {
-    debug(F("Received %d bytes from " HOST_FORMAT ":%hu"), packetSize, HOST_OCTETS(state.sock.remoteIP()), state.sock.remotePort());
-
-    memset(packetBuffer, 0, UDP_TX_PACKET_MAX_SIZE);
-    state.sock.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);
-
-    char *tokenstring = packetBuffer;
-    while (true) {
-      char *command = strtok(tokenstring, "\n");
-      if (command == NULL)
-        break;
-
-      tokenstring = NULL;
-
-      debug(F("Command: %s"), command);
-
-      if (strncmp_PF(command, F(CMD_BRIGHTNESS), sizeof(CMD_BRIGHTNESS - 1)) == 0) {
-        char *remainder = command + sizeof(CMD_BRIGHTNESS) - 1;
-        int value = atoi(remainder);
-        debug(F("Got brightness command: %s (%d)"), remainder, value);
-        state.standing_brightness = value;
-        analogWrite(RED_PIN, value);
-        analogWrite(GREEN_PIN, value);
-        analogWrite(BLUE_PIN, value);
-        analogWrite(STATUS_PIN, value);
-      } else if (strncmp_PF(command, F(CMD_PULSE), sizeof(CMD_PULSE) - 1) == 0) {
-        char *remainder = command + sizeof(CMD_PULSE) - 1;
-        int value = atoi(remainder);
-        debug(F("Got pulse command: %s (%d)"), remainder, value);
-        // TODO using state.ring_at as the base for pulsing animation is probably wrong
-        state.pulse_until = state.ring_at + (value * 1000);
-        debug(F("Pusing starting at %d until %d"), state.ring_at, state.pulse_until);
-      } else if (strncmp_PF(command, F(CMD_WDENABLE), sizeof(CMD_WDENABLE)) == 0) {
-        debug(F("Enabling watchdog."));
-        wdt_enable(WDTO_8S);
-      } else if (strncmp_PF(command, F(CMD_WDRESET), sizeof(CMD_WDRESET)) == 0) {
-        debug(F("Resetting watchdog."));
-        wdt_reset();
-        Agentuino.Trap("Arduino SNMP reset WDT", state.castAddr, locUpTime);
-      } else if (strncmp_PF(command, F(CMD_AUTOPULSE), sizeof(CMD_AUTOPULSE) - 1) == 0) {
-        char *remainder = command + sizeof(CMD_AUTOPULSE) - 1;
-        int value = atoi(remainder);
-        debug(F("Setting automatic pulsing: %s (%d)"), remainder, value);
-        state.auto_pulse = value * 1000;
-      } else if (strncmp_PF(command, F(CMD_REPROGRAM), sizeof(CMD_REPROGRAM)) == 0) {
-        NetEEPROM.writeImgBad();
-        wdt_disable();
-        wdt_enable(WDTO_2S);
-        while (1);
-      } else if (strncmp_PF(command, F(CMD_TRIGGER), sizeof(CMD_TRIGGER)) == 0) {
-        ring();
-      } else {
-        debug(F("Got unknown command: %s"), command);
-      }
-    }
-  }
-
   // listen/handle for incoming SNMP requests
   Agentuino.listen();
 
@@ -343,10 +269,6 @@ void loop() {
 
 void ring() {
   debug(F("Button Pushed"));
-
-  state.sock.beginPacket(state.castAddr, BROADCAST_PORT);
-  state.sock.print(F("ding dong\n"));
-  state.sock.endPacket();
 
   // send trap
   Agentuino.Trap("ding dong", state.castAddr, locUpTime);
