@@ -43,7 +43,7 @@ struct {
   volatile unsigned long ring_at = 0;
   volatile unsigned long pulse_until = 0;
 
-  volatile uint8_t standing_brightness = 0;
+  volatile int standing_brightness = 0;
 
 } state;
 
@@ -380,6 +380,13 @@ void myPduReceived()
     OID_SYS_NAME,
     OID_SYS_LOCATION,
     OID_SYS_SERVICES,
+    OID_BT_DB_BRIGHTNESS,
+    OID_BT_DB_PULSE,
+    OID_BT_DB_WDRESET,
+    OID_BT_DB_WDENABLE,
+    OID_BT_DB_AUTOPULSE,
+    OID_BT_DB_REPROGRAM,
+    OID_BT_DB_TRIGGER,
     OID_TERMINATOR,
   };
 
@@ -416,6 +423,34 @@ void myPduReceived()
     [OID_SYS_SERVICES] = {
       .oid = PSTR(OID_BASE_SYSTEM ".7.0"),
       .readonly = true,
+    },
+    [OID_BT_DB_BRIGHTNESS] = {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.1.0"),
+      .readonly = false,
+    },
+    [OID_BT_DB_PULSE] = {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.2.0"),
+      .readonly = false,
+    },
+    [OID_BT_DB_WDRESET] = {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.3.0"),
+      .readonly = false,
+    },
+    [OID_BT_DB_WDENABLE] = {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.4.0"),
+      .readonly = false,
+    },
+    [OID_BT_DB_AUTOPULSE] = {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.5.0"),
+      .readonly = false,
+    },
+    [OID_BT_DB_REPROGRAM] = {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.6.0"),
+      .readonly = false,
+    },
+    [OID_BT_DB_TRIGGER] = {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.7.0"),
+      .readonly = false,
     },
     [OID_TERMINATOR] = {
       .oid = PSTR("1.0"),
@@ -483,11 +518,48 @@ void myPduReceived()
         pdu.type = SNMP_PDU_RESPONSE;
         pdu.error = SNMP_ERR_READ_ONLY;
       } else {
+        int value;
         switch (selection) {
-          case OID_SYS_LOCATION:
-            status = pdu.VALUE.decode(locLocation, strlen(locLocation));
-            pdu.type = SNMP_PDU_RESPONSE;
-            pdu.error = status;
+          case OID_BT_DB_BRIGHTNESS:
+            status = pdu.VALUE.decode(&value);
+            debug(F("Got brightness command: %d"), value);
+            state.standing_brightness = value;
+
+            analogWrite(RED_PIN, value);
+            analogWrite(GREEN_PIN, value);
+            analogWrite(BLUE_PIN, value);
+            analogWrite(STATUS_PIN, value);
+            break;
+          case OID_BT_DB_PULSE:
+            status = pdu.VALUE.decode(&value);
+            debug(F("Got pulse command: %d"), value);
+            // TODO using state.ring_at as the base for pulsing animation is probably wrong
+            state.ring_at = millis();
+            state.pulse_until = state.ring_at + (value * 1000);
+            debug(F("Pusing starting at %d until %d"), state.ring_at, state.pulse_until);
+            break;
+          case OID_BT_DB_WDRESET:
+            debug(F("Resetting watchdog."));
+            wdt_reset();
+            Agentuino.Trap("Arduino SNMP reset WDT", state.castAddr, locUpTime);
+            break;
+          case OID_BT_DB_WDENABLE:
+            debug(F("Enabling watchdog."));
+            wdt_enable(WDTO_8S);
+            break;
+          case OID_BT_DB_AUTOPULSE:
+            status = pdu.VALUE.decode(&value);
+            debug(F("Setting automatic pulsing: %d"), value);
+            state.auto_pulse = value * 1000;
+            break;
+          case OID_BT_DB_REPROGRAM:
+            NetEEPROM.writeImgBad();
+            wdt_disable();
+            wdt_enable(WDTO_2S);
+            while (1);
+            break;
+          case OID_BT_DB_TRIGGER:
+            ring();
             break;
           default:
             pdu.type = SNMP_PDU_RESPONSE;
