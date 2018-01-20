@@ -13,7 +13,6 @@
 #include <IPAddress.h>
 
 #include <Agentuino.h>
-#include <MIB.h>
 
 #include "LEDBrightness.h"
 
@@ -26,9 +25,6 @@
 #define CMD_AUTOPULSE  "autopulse "
 #define CMD_REPROGRAM  "reprogram"
 #define CMD_TRIGGER    "trigger"
-
-const char btBase[] PROGMEM = "1.3.6.1.4.1.50174";
-const char ifBase[] PROGMEM = "1.3.6.1.2.1.4.20.1.1";
 
 const char Description[] PROGMEM = "SNMP Doorbell";
 const char Contact[]     PROGMEM = "Jonathan Steinert";
@@ -363,177 +359,200 @@ void ring() {
   }
 }
 
+#define OID_BASE_SYSTEM           "1.3.6.1.2.1.1"
+#define OID_BASE_INTERFACE        "1.3.6.1.2.1.4.20.1.1"
+#define OID_BASE_BEEKEEPER_TECH   "1.3.6.1.4.1.50174"
+
 void myPduReceived()
 {
+  /* From Agentuino.h implied globals :/
+      extern SNMP_API_STAT_CODES api_status;
+      extern SNMP_ERR_CODES status;
+      extern char oid[SNMP_MAX_OID_LEN];
+      extern uint32_t prevMillis;
+  */
+
+  enum oid_keys {
+    OID_SYS_DESCR = 0,
+    OID_SYS_OBJECTID,
+    OID_SYS_UPTIME,
+    OID_SYS_CONTACT,
+    OID_SYS_NAME,
+    OID_SYS_LOCATION,
+    OID_SYS_SERVICES,
+    OID_TERMINATOR,
+  };
+
+  struct oid_config {
+    const char *oid;
+    const byte readonly;
+  };
+
+  const struct oid_config all_oids[] PROGMEM = {
+    [OID_SYS_DESCR] = {
+      .oid = PSTR(OID_BASE_SYSTEM ".1.0"),
+      .readonly = true,
+    },
+    [OID_SYS_OBJECTID] = {
+      .oid = PSTR(OID_BASE_SYSTEM ".2.0"),
+      .readonly = true,
+    },
+    [OID_SYS_UPTIME] = {
+      .oid = PSTR(OID_BASE_SYSTEM ".3.0"),
+      .readonly = true,
+    },
+    [OID_SYS_CONTACT] = {
+      .oid = PSTR(OID_BASE_SYSTEM ".4.0"),
+      .readonly = false,
+    },
+    [OID_SYS_NAME] = {
+      .oid = PSTR(OID_BASE_SYSTEM ".5.0"),
+      .readonly = false,
+    },
+    [OID_SYS_LOCATION] = {
+      .oid = PSTR(OID_BASE_SYSTEM ".6.0"),
+      .readonly = false,
+    },
+    [OID_SYS_SERVICES] = {
+      .oid = PSTR(OID_BASE_SYSTEM ".7.0"),
+      .readonly = true,
+    },
+    [OID_TERMINATOR] = {
+      .oid = PSTR("1.0"),
+      .readonly = false,
+    },
+  };
+
   SNMP_PDU pdu;
   api_status = Agentuino.requestPdu(&pdu);
 
-  if ((pdu.type == SNMP_PDU_GET || pdu.type == SNMP_PDU_GET_NEXT || pdu.type == SNMP_PDU_SET)
-      && pdu.error == SNMP_ERR_NO_ERROR && api_status == SNMP_API_STAT_SUCCESS ) {
-    //
+  if (pdu.error != SNMP_ERR_NO_ERROR || api_status != SNMP_API_STAT_SUCCESS)
+    goto cleanup;
+
+  { // Lexical scope
     pdu.OID.toString(oid);
     size_t oid_size;
+    int selection = -1;
+    int ilen = strlen(oid);
+    struct oid_config *oid_selection;
 
-    // Implementation SNMP GET NEXT
-    if ( pdu.type == SNMP_PDU_GET_NEXT ) {
-      char tmpOIDfs[SNMP_MAX_OID_LEN]; // Exact matches to trigger iteration
-      if ( strcmp_P( oid, sysDescr ) == 0 ) {
-        strcpy_P ( oid, sysUpTime );
-        strcpy_P ( tmpOIDfs, sysUpTime );
-        pdu.OID.fromString(tmpOIDfs, oid_size);
-      } else if ( strcmp_P(oid, sysUpTime ) == 0 ) {
-        strcpy_P ( oid, sysContact );
-        strcpy_P ( tmpOIDfs, sysContact );
-        pdu.OID.fromString(tmpOIDfs, oid_size);
-      } else if ( strcmp_P(oid, sysContact ) == 0 ) {
-        strcpy_P ( oid, sysName );
-        strcpy_P ( tmpOIDfs, sysName );
-        pdu.OID.fromString(tmpOIDfs, oid_size);
-      } else if ( strcmp_P(oid, sysName ) == 0 ) {
-        strcpy_P ( oid, sysLocation );
-        strcpy_P ( tmpOIDfs, sysLocation );
-        pdu.OID.fromString(tmpOIDfs, oid_size);
-      } else if ( strcmp_P(oid, sysLocation ) == 0 ) {
-        strcpy_P ( oid, sysServices );
-        strcpy_P ( tmpOIDfs, sysServices );
-        pdu.OID.fromString(tmpOIDfs, oid_size);
-      } else if ( strcmp_P(oid, sysServices ) == 0 ) {
-        strcpy_P ( oid, "1.0" );
-      } else { // Partial matches below here
-        int ilen = strlen(oid);
-        if ( strncmp_P(oid, sysDescr, ilen ) == 0 ) {
-          strcpy_P ( oid, sysDescr );
-          strcpy_P ( tmpOIDfs, sysDescr );
-          pdu.OID.fromString(tmpOIDfs, oid_size);
-        } else if ( strncmp_P(oid, sysUpTime, ilen ) == 0 ) {
-          strcpy_P ( oid, sysUpTime );
-          strcpy_P ( tmpOIDfs, sysUpTime );
-          pdu.OID.fromString(tmpOIDfs, oid_size);
-        } else if ( strncmp_P(oid, sysContact, ilen ) == 0 ) {
-          strcpy_P ( oid, sysContact );
-          strcpy_P ( tmpOIDfs, sysContact );
-          pdu.OID.fromString(tmpOIDfs, oid_size);
-        } else if ( strncmp_P(oid, sysName, ilen ) == 0 ) {
-          strcpy_P ( oid, sysName );
-          strcpy_P ( tmpOIDfs, sysName );
-          pdu.OID.fromString(tmpOIDfs, oid_size);
-        } else if ( strncmp_P(oid, sysLocation, ilen ) == 0 ) {
-          strcpy_P ( oid, sysLocation );
-          strcpy_P ( tmpOIDfs, sysLocation );
-          pdu.OID.fromString(tmpOIDfs, oid_size);
-        } else if ( strncmp_P(oid, sysServices, ilen ) == 0 ) {
-          strcpy_P ( oid, sysServices );
-          strcpy_P ( tmpOIDfs, sysServices );
-          pdu.OID.fromString(tmpOIDfs, oid_size);
+    switch (pdu.type) {
+      case SNMP_PDU_GET_NEXT:
+        char tmpOIDfs[SNMP_MAX_OID_LEN];
+
+        for (int i = 0; i < (sizeof(all_oids) / sizeof(all_oids[0])) - 1; i++) {
+          struct oid_config *oid_current = pgm_read_word(&(all_oids[i]));
+          struct oid_config *oid_next    = pgm_read_word(&(all_oids[i + 1]));
+
+          if (strcmp_P( oid, oid_current->oid ) == 0) { // Exact matches to iterate
+            strcpy_P(oid, oid_next->oid);
+            strcpy_P(tmpOIDfs, oid_next->oid);
+            pdu.OID.fromString(tmpOIDfs, oid_size);
+            selection = i + 1;
+            break;
+          }
+
+          // I think prefix match has a bug where 1.1 is considered a prefix to 1.10, which is wrong
+          if (strncmp_P(oid, oid_current->oid, ilen)) { // Prefix match to search
+            strcpy_P(oid, oid_current->oid);
+            strcpy_P(tmpOIDfs, oid_current->oid);
+            pdu.OID.fromString(tmpOIDfs, oid_size);
+            selection = i;
+            break;
+          }
+        }
+        break;
+      case SNMP_PDU_GET:
+      case SNMP_PDU_SET:
+        for (int i = 0; i < (sizeof(all_oids) / sizeof(all_oids[0])) - 1; i++) {
+          struct oid_config *oid_current = pgm_read_word(&(all_oids[i]));
+          if (strcmp_P(oid, oid_current->oid) == 0) { // Exact matches to iterate
+            selection = i;
+            break;
+          }
+        }
+        break;
+      default:
+        goto cleanup;
+    }
+
+    oid_selection = pgm_read_word(&(all_oids[selection]));
+
+    if (pdu.type == SNMP_PDU_SET) {
+      if (pgm_read_byte(&(oid_selection->readonly)) > 0) {
+        pdu.type = SNMP_PDU_RESPONSE;
+        pdu.error = SNMP_ERR_READ_ONLY;
+      } else {
+        switch (selection) {
+          case OID_SYS_LOCATION:
+            status = pdu.VALUE.decode(locLocation, strlen(locLocation));
+            pdu.type = SNMP_PDU_RESPONSE;
+            pdu.error = status;
+            break;
+          default:
+            pdu.type = SNMP_PDU_RESPONSE;
+            pdu.error = SNMP_ERR_NO_SUCH_NAME;
+            break;
         }
       }
+      goto respond;
+    } else { // SNMP_PDU_GET and SNMP_PDU_GET_NEXT
+
+      char temporary[32];
+      memset(temporary, 0, sizeof(temporary));
+
+      switch (selection) {
+        case OID_SYS_DESCR:
+          strcpy_P(temporary, Description);
+          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
+        case OID_SYS_OBJECTID:
+        case OID_SYS_UPTIME:
+          status = pdu.VALUE.encode(SNMP_SYNTAX_TIME_TICKS, millis() / 10);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
+        case OID_SYS_CONTACT:
+          strcpy_P(temporary, Contact);
+          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
+        case OID_SYS_NAME:
+          strcpy_P(temporary, Name);
+          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
+        case OID_SYS_LOCATION:
+          strcpy_P(temporary, Location);
+          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
+        case OID_SYS_SERVICES:
+          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, locServices);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
+        default:
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = SNMP_ERR_NO_SUCH_NAME;
+          break;
+      }
+      goto respond;
     }
-    // End of implementation SNMP GET NEXT / WALK
-
-    char temporary[32];
-    memset(temporary, 0, sizeof(temporary));
-
-    if ( strcmp_P(oid, sysDescr ) == 0 ) {
-      // handle sysDescr (set/get) requests
-      if ( pdu.type == SNMP_PDU_SET ) {
-        // response packet from set-request - object is read-only
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = SNMP_ERR_READ_ONLY;
-      } else {
-        // response packet from get-request - locDescr
-        strcpy_P(temporary, Description);
-        status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = status;
-      }
-      //
-    } else if ( strcmp_P(oid, sysUpTime ) == 0 ) {
-      // handle sysName (set/get) requests
-      if ( pdu.type == SNMP_PDU_SET ) {
-        // response packet from set-request - object is read-only
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = SNMP_ERR_READ_ONLY;
-      } else {
-        // response packet from get-request - locUpTime
-        status = pdu.VALUE.encode(SNMP_SYNTAX_TIME_TICKS, millis() / 10);
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = status;
-      }
-      //
-    } else if ( strcmp_P(oid, sysName ) == 0 ) {
-      // handle sysName (set/get) requests
-      if ( pdu.type == SNMP_PDU_SET ) {
-        // response packet from set-request - object is read/write
-        //status = pdu.VALUE.decode(locName, strlen(locName));
-        //pdu.type = SNMP_PDU_RESPONSE;
-        //pdu.error = status;
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = SNMP_ERR_READ_ONLY;
-      } else {
-        // response packet from get-request - locName
-        strcpy_P(temporary, Name);
-        status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = status;
-      }
-      //
-    } else if ( strcmp_P(oid, sysContact ) == 0 ) {
-      // handle sysContact (set/get) requests
-      if ( pdu.type == SNMP_PDU_SET ) {
-        // response packet from set-request - object is read/write
-        //status = pdu.VALUE.decode(locContact, strlen(locContact));
-        //pdu.type = SNMP_PDU_RESPONSE;
-        //pdu.error = status;
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = SNMP_ERR_READ_ONLY;
-      } else {
-        // response packet from get-request - locContact
-        strcpy_P(temporary, Contact);
-        status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = status;
-      }
-      //
-    } else if ( strcmp_P(oid, sysLocation ) == 0 ) {
-      // handle sysLocation (set/get) requests
-      if ( pdu.type == SNMP_PDU_SET ) {
-        // response packet from set-request - object is read/write
-        //status = pdu.VALUE.decode(locLocation, strlen(locLocation));
-        //pdu.type = SNMP_PDU_RESPONSE;
-        //pdu.error = status;
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = SNMP_ERR_READ_ONLY;
-
-      } else {
-        // response packet from get-request - locLocation
-        strcpy_P(temporary, Location);
-        status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = status;
-      }
-      //
-    } else if ( strcmp_P(oid, sysServices) == 0 ) {
-      // handle sysServices (set/get) requests
-      if ( pdu.type == SNMP_PDU_SET ) {
-        // response packet from set-request - object is read-only
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = SNMP_ERR_READ_ONLY;
-      } else {
-        // response packet from get-request - locServices
-        status = pdu.VALUE.encode(SNMP_SYNTAX_INT, locServices);
-        pdu.type = SNMP_PDU_RESPONSE;
-        pdu.error = status;
-      }
-      //
-    } else {
-      // oid does not exist
-      // response packet - object not found
-      pdu.type = SNMP_PDU_RESPONSE;
-      pdu.error = SNMP_ERR_NO_SUCH_NAME;
-    }
-    //
-    Agentuino.responsePdu(&pdu);
   }
-  //
+
+  goto cleanup;
+
+respond:
+
+  Agentuino.responsePdu(&pdu);
+
+cleanup:
+
   Agentuino.freePdu(&pdu);
 }
