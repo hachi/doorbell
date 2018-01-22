@@ -325,15 +325,15 @@ void myPduReceived()
     },
     [OID_SYS_CONTACT] = {
       .oid = PSTR(OID_BASE_SYSTEM ".4.0"),
-      .readonly = false,
+      .readonly = true,
     },
     [OID_SYS_NAME] = {
       .oid = PSTR(OID_BASE_SYSTEM ".5.0"),
-      .readonly = false,
+      .readonly = true,
     },
     [OID_SYS_LOCATION] = {
       .oid = PSTR(OID_BASE_SYSTEM ".6.0"),
-      .readonly = false,
+      .readonly = true,
     },
     [OID_SYS_SERVICES] = {
       .oid = PSTR(OID_BASE_SYSTEM ".7.0"),
