@@ -17,11 +17,6 @@
 
 #include "config.h"
 
-const char Description[] PROGMEM = "SNMP Doorbell";
-const char Contact[]     PROGMEM = "Jonathan Steinert";
-const char Name[]        PROGMEM = "Front Door";
-const char Location[]    PROGMEM = "Hachi's house";
-
 #define HOST_FORMAT     "%hhu.%hhu.%hhu.%hhu"
 #define HOST_OCTETS(H)  H[0], H[1], H[2], H[3]
 
@@ -278,6 +273,13 @@ void ring() {
 #define OID_BASE_INTERFACE        "1.3.6.1.2.1.4.20.1.1"
 #define OID_BASE_BEEKEEPER_TECH   "1.3.6.1.4.1.50174"
 
+const char Description[] PROGMEM = "SNMP Doorbell";
+const char Contact[]     PROGMEM = "Jonathan Steinert";
+const char Name[]        PROGMEM = "Front Door";
+const char Location[]    PROGMEM = "Hachi's house";
+const char ObjectID[]    PROGMEM = OID_BASE_BEEKEEPER_TECH ".258.1";
+
+
 void myPduReceived()
 {
   /* From Agentuino.h implied globals :/
@@ -493,6 +495,11 @@ void myPduReceived()
           pdu.error = status;
           break;
         case OID_SYS_OBJECTID:
+          strcpy_P(temporary, ObjectID);
+          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
         case OID_SYS_UPTIME:
           status = pdu.VALUE.encode(SNMP_SYNTAX_TIME_TICKS, millis() / 10);
           pdu.type = SNMP_PDU_RESPONSE;
