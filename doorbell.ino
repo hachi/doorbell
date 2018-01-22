@@ -9,6 +9,7 @@
 #include <SPI.h>
 
 #include <Ethernet.h>
+#include <Dhcp.h>
 #include <IPAddress.h>
 
 #include <Agentuino.h>
@@ -21,8 +22,6 @@
 #define HOST_OCTETS(H)  H[0], H[1], H[2], H[3]
 
 struct {
-  IPAddress localAddr, localMask, castAddr;
-
   volatile unsigned int auto_pulse = 0;
 
   volatile unsigned long ring_at = 0;
@@ -119,7 +118,7 @@ void debug(const char *msg, ... ) {
   va_end(argList);
 
   if (state.snmp_online)
-    Agentuino.Trap(buffer, state.castAddr, locUpTime);
+    Agentuino.Trap(buffer, broadcastIP(), locUpTime);
 
   // Serial.println(buffer);
 
@@ -135,27 +134,17 @@ void debug(const __FlashStringHelper *msg, ... ) {
   va_end(argList);
 
   if (state.snmp_online)
-    Agentuino.Trap(buffer, state.castAddr, locUpTime);
+    Agentuino.Trap(buffer, broadcastIP(), locUpTime);
 
   return;
 }
 
 void gotip() {
-  state.localAddr = Ethernet.localIP();
-  state.localMask = Ethernet.subnetMask();
+  debug(F("Address: " HOST_FORMAT), HOST_OCTETS(Ethernet.localIP()));
+  debug(F("Netmask: " HOST_FORMAT), HOST_OCTETS(Ethernet.subnetMask()));
+  debug(F("Cast: " HOST_FORMAT ":%hu"), HOST_OCTETS(broadcastIP()), BROADCAST_PORT);
 
-  for (byte thisByte = 0; thisByte < 4; thisByte++) {
-    state.castAddr[thisByte] = (
-                                 (state.localAddr[thisByte] &  state.localMask[thisByte]) |
-                                 (0xFF                      & ~state.localMask[thisByte])
-                               );
-  }
-
-  debug(F("Address: " HOST_FORMAT), HOST_OCTETS(state.localAddr));
-  debug(F("Netmask: " HOST_FORMAT), HOST_OCTETS(state.localMask));
-  debug(F("Cast: " HOST_FORMAT ":%hu"), HOST_OCTETS(state.castAddr), BROADCAST_PORT);
-
-  NetEEPROM.writeNet(mac, state.localAddr, Ethernet.gatewayIP(), state.localMask);
+  NetEEPROM.writeNet(mac, Ethernet.localIP(), Ethernet.gatewayIP(), Ethernet.subnetMask());
 }
 
 /*
@@ -190,22 +179,32 @@ void gotip() {
   }
 */
 
+IPAddress broadcastIP() {
+  uint32_t ip = Ethernet.localIP();
+  uint32_t mask = Ethernet.subnetMask();
+
+  IPAddress ret = ((ip & mask) | (0xFFFFFFFF & ~mask));
+
+  return ret;
+}
+
 void maintain_ethernet() {
   int status = Ethernet.maintain();
 
   switch (status) {
-    case 0: // Noop
+
+    case DHCP_CHECK_NONE:
       return;
       break;
-    case 1: // Renew Failure
+    case DHCP_CHECK_RENEW_FAIL:
       // TODO: try again
       break;
-    case 2: // Renew Success
+    case DHCP_CHECK_RENEW_OK:
       break;
-    case 3: // Rebind Failure
+    case DHCP_CHECK_REBIND_FAIL:
       // TODO: try again
       break;
-    case 4: // Rebind Success
+    case DHCP_CHECK_REBIND_OK:
       gotip();
       break;
   }
@@ -273,7 +272,7 @@ void ring() {
   debug(F("Button Pushed"));
 
   // send trap
-  Agentuino.Trap("ding dong", state.castAddr, locUpTime);
+  Agentuino.Trap("ding dong", broadcastIP(), locUpTime);
   //Agentuino.Trap("Arduino SNMP trap", RemoteIP, locUpTime, "1.3.6.1.4.1.28032.1.1.1");
   //Agentuino.Trap("Arduino SNMP trap", RemoteIP, locUpTime, "1.3.6.1.4.1.36061.0", "1.3.6.1.4.1.36061.3.1.1.1");
 
@@ -473,7 +472,7 @@ void myPduReceived()
           case OID_BT_DB_WDRESET:
             debug(F("Resetting watchdog."));
             wdt_reset();
-            Agentuino.Trap("Arduino SNMP reset WDT", state.castAddr, locUpTime);
+            Agentuino.Trap("Arduino SNMP reset WDT", broadcastIP(), locUpTime);
             break;
           case OID_BT_DB_WDENABLE:
             debug(F("Enabling watchdog."));
