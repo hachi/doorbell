@@ -400,7 +400,6 @@ void myPduReceived()
     size_t oid_size;
     int selection = -1;
     int ilen = strlen(oid);
-    struct oid_config *oid_selection;
 
     switch (pdu.type) {
       case SNMP_PDU_GET_NEXT:
@@ -431,7 +430,7 @@ void myPduReceived()
       case SNMP_PDU_GET:
       case SNMP_PDU_SET:
         for (int i = 0; i < (sizeof(all_oids) / sizeof(all_oids[0])) - 1; i++) {
-          struct oid_config *oid_current = pgm_read_word(&(all_oids[i]));
+          struct oid_config *oid_current = &(all_oids[i]);
           if (strcmp_P(oid, oid_current->oid) == 0) { // Exact matches to iterate
             selection = i;
             break;
@@ -442,10 +441,10 @@ void myPduReceived()
         goto cleanup;
     }
 
-    oid_selection = pgm_read_word(&(all_oids[selection]));
+    struct oid_config* oid_selection = &(all_oids[selection]);
 
     if (pdu.type == SNMP_PDU_SET) {
-      if (pgm_read_byte(&(oid_selection->readonly)) > 0) {
+      if (oid_selection->readonly) {
         pdu.type = SNMP_PDU_RESPONSE;
         pdu.error = SNMP_ERR_READ_ONLY;
       } else {
