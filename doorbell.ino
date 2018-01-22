@@ -142,7 +142,7 @@ void debug(const __FlashStringHelper *msg, ... ) {
 void gotip() {
   debug(F("Address: " HOST_FORMAT), HOST_OCTETS(Ethernet.localIP()));
   debug(F("Netmask: " HOST_FORMAT), HOST_OCTETS(Ethernet.subnetMask()));
-  debug(F("Cast: " HOST_FORMAT ":%hu"), HOST_OCTETS(broadcastIP()), BROADCAST_PORT);
+  debug(F("Cast: " HOST_FORMAT), HOST_OCTETS(broadcastIP()));
 
   NetEEPROM.writeNet(mac, Ethernet.localIP(), Ethernet.gatewayIP(), Ethernet.subnetMask());
 }
