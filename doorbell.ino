@@ -93,7 +93,7 @@ void setup() {
 
   debug(F("Initializing SNMP..."));
 
-  api_status = Agentuino.begin();
+  api_status = Agentuino.begin("public", "private", 0);
 
   if (api_status == SNMP_API_STAT_SUCCESS) {
     Agentuino.onPduReceive(myPduReceived);
