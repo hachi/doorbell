@@ -524,7 +524,31 @@ void myPduReceived()
           pdu.error = status;
           break;
         case OID_SYS_SERVICES:
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, locServices);
+          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, 72);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
+        case OID_BT_DB_BRIGHTNESS:
+          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, state.standing_brightness);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
+        case OID_BT_DB_PULSE:
+          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, 2);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
+        case OID_BT_DB_AUTOPULSE:
+          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, 3);
+          pdu.type = SNMP_PDU_RESPONSE;
+          pdu.error = status;
+          break;
+        case OID_BT_DB_WDRESET:
+        case OID_BT_DB_WDENABLE:
+        case OID_BT_DB_REPROGRAM:
+        case OID_BT_DB_TRIGGER:
+          strcpy_P(temporary, PSTR("Write-only node"));
+          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
           pdu.type = SNMP_PDU_RESPONSE;
           pdu.error = status;
           break;
