@@ -342,31 +342,31 @@ void myPduReceived()
       .readonly = true,
     },
     [OID_BT_DB_BRIGHTNESS] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.1.0"),
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.0"),
       .readonly = false,
     },
     [OID_BT_DB_PULSE] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.2.0"),
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.2.0"),
       .readonly = false,
     },
     [OID_BT_DB_WDRESET] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.3.0"),
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.3.0"),
       .readonly = false,
     },
     [OID_BT_DB_WDENABLE] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.4.0"),
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.4.0"),
       .readonly = false,
     },
     [OID_BT_DB_AUTOPULSE] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.5.0"),
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.5.0"),
       .readonly = false,
     },
     [OID_BT_DB_REPROGRAM] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.6.0"),
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.6.0"),
       .readonly = false,
     },
     [OID_BT_DB_TRIGGER] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".94062.258.1.7.0"),
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.7.0"),
       .readonly = false,
     },
     [OID_TERMINATOR] = {
