@@ -405,7 +405,7 @@ void myPduReceived()
           }
 
           // I think prefix match has a bug where 1.1 is considered a prefix to 1.10, which is wrong
-          if (strncmp_P(oid, oid_current->oid, ilen)) { // Prefix match to search
+          if (strncmp_P(oid, oid_current->oid, ilen) == 0) { // Prefix match to search
             strcpy_P(oid, oid_current->oid);
             strcpy_P(tmpOIDfs, oid_current->oid);
             pdu.OID.fromString(tmpOIDfs, oid_size);
