@@ -34,8 +34,18 @@ struct {
   volatile unsigned long pulse_until = 0;
 
   volatile int standing_brightness = 0;
-
 } state;
+
+void rgb(int red, int green, int blue) {
+  analogWrite(RED_PIN,    red);
+  analogWrite(GREEN_PIN,  green);
+  analogWrite(BLUE_PIN,   blue);
+  analogWrite(STATUS_PIN, red);
+}
+
+void mono(int lum) {
+  rgb(lum, lum, lum);
+}
 
 void setup() {
   //  Serial.begin(9600);
@@ -44,40 +54,31 @@ void setup() {
   // When pin 9 is left as INPUT, the floating means it blinks strangely
   // with ethernet activity. Configure for output to quell that.
   pinMode(STATUS_PIN, OUTPUT);
-  analogWrite(STATUS_PIN, 0);
-
-  // PWM Output for the LED Ring on the doorbell.
   pinMode(RED_PIN, OUTPUT);
-  analogWrite(RED_PIN, 0);
-
   pinMode(GREEN_PIN, OUTPUT);
-  analogWrite(GREEN_PIN, 0);
-
   pinMode(BLUE_PIN, OUTPUT);
-  analogWrite(BLUE_PIN, 0);
-
+  mono(0);
+  
   // Digital Input for the button on the doorbell. Ground to activate.
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   //attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), fire, CHANGE);
 
   debug(F("...done"));
 
-  analogWrite(RED_PIN, 64);
+  rgb(64, 0, 0);
   delay(500);
-  analogWrite(RED_PIN, 0);
+  mono(0);
 
   debug(F("Initializing Ethernet..."));
-  analogWrite(GREEN_PIN, 64);
+  rgb(0, 64, 0);
   int backoff = 1;
   while (true) {
-    analogWrite(STATUS_PIN, 15);
     debug(F("Trying to get an IP address using DHCP."));
     if (Ethernet.begin(mac))
       break;
     debug(F("Failed. Pausing for %d seconds and retrying."), backoff);
 
-    analogWrite(STATUS_PIN, 1);
-    analogWrite(RED_PIN, 64);
+    rgb(64, 64, 0);
 
     delay(backoff * 1000);
     if (backoff < 60)
@@ -85,9 +86,8 @@ void setup() {
   }
 
   delay(500);
-  analogWrite(RED_PIN, 0);
-  analogWrite(GREEN_PIN, 0);
-
+  mono(0);
+  
   debug(F("...done"));
 
 
@@ -102,9 +102,9 @@ void setup() {
     debug(F("...failed"));
   }
 
-  analogWrite(STATUS_PIN, 255);
+  rgb(0,0,64);
   delay(300);
-  analogWrite(STATUS_PIN, 0);
+  mono(0);
 
   gotip();
 }
@@ -227,10 +227,7 @@ void loop() {
       state.pulse_until = 0;
       state.ring_at = 0;
       debug(F("Resetting output to standing value of %d"), state.standing_brightness);
-      analogWrite(RED_PIN,    state.standing_brightness);
-      analogWrite(GREEN_PIN,  state.standing_brightness);
-      analogWrite(BLUE_PIN,   state.standing_brightness);
-      analogWrite(STATUS_PIN, state.standing_brightness);
+      mono(state.standing_brightness);
     } else {
       final_delay = 0;
 
@@ -252,11 +249,7 @@ void loop() {
       uint8_t g = brightness_to_pwm(y);
       uint8_t b = brightness_to_pwm(z);
 
-      analogWrite(RED_PIN, r);
-      analogWrite(GREEN_PIN, g);
-      analogWrite(BLUE_PIN, b);
-
-      analogWrite(STATUS_PIN, r);
+      rgb(r, g, b);
     }
   }
 
@@ -447,10 +440,7 @@ void myPduReceived()
             debug(F("Got brightness command: %d"), value);
             state.standing_brightness = value;
 
-            analogWrite(RED_PIN, value);
-            analogWrite(GREEN_PIN, value);
-            analogWrite(BLUE_PIN, value);
-            analogWrite(STATUS_PIN, value);
+            mono(value);
             break;
           case OID_BT_DB_PULSE:
             status = pdu.VALUE.decode(&value);
