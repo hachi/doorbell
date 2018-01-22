@@ -53,7 +53,7 @@ void setup() {
   pinMode(GREEN_PIN, OUTPUT);
   pinMode(BLUE_PIN, OUTPUT);
   mono(0);
-  
+
   // Digital Input for the button on the doorbell. Ground to activate.
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   //attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), fire, CHANGE);
@@ -82,7 +82,7 @@ void setup() {
 
   delay(500);
   mono(0);
-  
+
   debug(F("...done"));
 
 
@@ -97,7 +97,7 @@ void setup() {
     debug(F("...failed"));
   }
 
-  rgb(0,0,64);
+  rgb(0, 0, 64);
   delay(300);
   mono(0);
 
