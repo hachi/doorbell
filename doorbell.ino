@@ -29,6 +29,9 @@ struct {
   volatile unsigned long pulse_until = 0;
 
   volatile int standing_brightness = 0;
+
+  bool net_online = false;
+  bool snmp_online = false;
 } state;
 
 void rgb(int red, int green, int blue) {
@@ -68,10 +71,14 @@ void setup() {
   rgb(0, 64, 0);
   int backoff = 1;
   while (true) {
-    debug(F("Trying to get an IP address using DHCP."));
-    if (Ethernet.begin(mac))
+    debug(F("Trying to get an IP address using DHCP..."));
+    if (Ethernet.begin(mac)) {
+      gotip();
+      state.net_online = true;
+      debug(F("...done"));
       break;
-    debug(F("Failed. Pausing for %d seconds and retrying."), backoff);
+    }
+    debug(F("...Failed. Pausing for %d seconds and retrying."), backoff);
 
     rgb(64, 64, 0);
 
@@ -92,16 +99,16 @@ void setup() {
 
   if (api_status == SNMP_API_STAT_SUCCESS) {
     Agentuino.onPduReceive(myPduReceived);
+    state.snmp_online = true;
     debug(F("...done"));
   } else {
+    state.snmp_online = false;
     debug(F("...failed"));
   }
 
   rgb(0, 0, 64);
   delay(300);
   mono(0);
-
-  gotip();
 }
 
 void debug(const char *msg, ... ) {
@@ -111,8 +118,12 @@ void debug(const char *msg, ... ) {
   int rv = vsnprintf(buffer, sizeof(buffer), msg, argList);
   va_end(argList);
 
-  Agentuino.Trap(buffer, state.castAddr, locUpTime);
+  if (state.snmp_online)
+    Agentuino.Trap(buffer, state.castAddr, locUpTime);
+
   // Serial.println(buffer);
+
+  return;
 }
 
 void debug(const __FlashStringHelper *msg, ... ) {
@@ -123,7 +134,10 @@ void debug(const __FlashStringHelper *msg, ... ) {
   int rv = vsnprintf_P(buffer, sizeof(buffer), p, argList);
   va_end(argList);
 
-  Agentuino.Trap(buffer, state.castAddr, locUpTime);
+  if (state.snmp_online)
+    Agentuino.Trap(buffer, state.castAddr, locUpTime);
+
+  return;
 }
 
 void gotip() {
