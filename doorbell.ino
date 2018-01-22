@@ -312,7 +312,7 @@ void myPduReceived()
     const byte readonly;
   };
 
-  const struct oid_config all_oids[] PROGMEM = {
+  const struct oid_config all_oids[] = {
     [OID_SYS_DESCR] = {
       .oid = PSTR(OID_BASE_SYSTEM ".1.0"),
       .readonly = true,
@@ -393,8 +393,8 @@ void myPduReceived()
         char tmpOIDfs[SNMP_MAX_OID_LEN];
 
         for (int i = 0; i < (sizeof(all_oids) / sizeof(all_oids[0])) - 1; i++) {
-          struct oid_config *oid_current = pgm_read_word(&(all_oids[i]));
-          struct oid_config *oid_next    = pgm_read_word(&(all_oids[i + 1]));
+          struct oid_config *oid_current = &(all_oids[i]);
+          struct oid_config *oid_next    = &(all_oids[i + 1]);
 
           if (strcmp_P( oid, oid_current->oid ) == 0) { // Exact matches to iterate
             strcpy_P(oid, oid_next->oid);
