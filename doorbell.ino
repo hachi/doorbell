@@ -456,6 +456,11 @@ void myPduReceived()
             state.standing_brightness = value;
 
             mono(value);
+
+            status = pdu.VALUE.encode(SNMP_SYNTAX_INT, state.standing_brightness);
+            pdu.type = SNMP_PDU_RESPONSE;
+            pdu.error = status;
+
             break;
           case OID_BT_DB_PULSE:
             status = pdu.VALUE.decode(&value);
