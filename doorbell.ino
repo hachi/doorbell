@@ -15,6 +15,7 @@
 #include <Agentuino.h>
 
 #include "LEDBrightness.h"
+#include "MemoryLayout.h"
 
 #include "config.h"
 
@@ -108,6 +109,13 @@ void setup() {
   rgb(0, 0, 64);
   delay(300);
   mono(0);
+
+  debug(F("Data: %hu"), memory_data());
+  debug(F("BSS: %hu"), memory_bss());
+  debug(F("Heap: %hu"), memory_heap());
+  debug(F("Stack: %hu"), memory_stack());
+  debug(F("Total: %hu"), memory_total());
+  debug(F("Free: %hu"), memory_free());
 }
 
 void debug(const char *msg, ... ) {
