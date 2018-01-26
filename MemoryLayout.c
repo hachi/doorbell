@@ -30,7 +30,7 @@ extern byte __heap_start, __heap_end;
 extern byte __bss_start,  __bss_end;
 extern byte __data_start, __data_end;
 
-extern byte __data_load_end;
+extern byte _etext, __TEXT_REGION_LENGTH__;
 
 extern byte *__brkval;
 
@@ -58,4 +58,16 @@ const uint16_t memory_total() {
 
 uint16_t memory_free() {
   return memory_total() - memory_data() - memory_bss() - memory_heap() - memory_stack();
+}
+
+const uint16_t flash_total() {
+  return &__TEXT_REGION_LENGTH__ - 0;
+}
+
+const uint16_t flash_used() {
+  return &_etext - 0;
+}
+
+const uint16_t flash_free() {
+  return flash_total() - flash_used();
 }

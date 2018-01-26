@@ -12,6 +12,10 @@ uint16_t memory_stack();
 const uint16_t memory_total();
 uint16_t memory_free();
 
+const int32_t flash_total();
+const int32_t flash_used();
+const int32_t flash_free();
+
 #ifdef  __cplusplus
 }
 #endif
