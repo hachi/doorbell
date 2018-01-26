@@ -71,8 +71,10 @@ void setup() {
   rgb(0, 64, 0);
   int backoff = 1;
   while (true) {
+    uint8_t mac_copy[sizeof(mac)];
+    memcpy_P(mac_copy, mac, sizeof(mac));
     debug(F("Trying to get an IP address using DHCP..."));
-    if (Ethernet.begin(mac)) {
+    if (Ethernet.begin(mac_copy)) {
       gotip();
       state.net_online = true;
       debug(F("...done"));
@@ -152,7 +154,10 @@ void gotip() {
   debug(F("Netmask: " HOST_FORMAT), HOST_OCTETS(Ethernet.subnetMask()));
   debug(F("Cast: " HOST_FORMAT), HOST_OCTETS(broadcastIP()));
 
-  NetEEPROM.writeNet(mac, Ethernet.localIP(), Ethernet.gatewayIP(), Ethernet.subnetMask());
+  uint8_t mac_copy[sizeof(mac)];
+  memcpy_P(mac_copy, mac, sizeof(mac));
+
+  NetEEPROM.writeNet(mac_copy, Ethernet.localIP(), Ethernet.gatewayIP(), Ethernet.subnetMask());
 }
 
 /*
