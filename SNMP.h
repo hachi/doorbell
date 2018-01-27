@@ -15,6 +15,104 @@ const char Name[]        PROGMEM = "Front Door";
 const char Location[]    PROGMEM = "Hachi's house";
 const char ObjectID[]    PROGMEM = OID_BASE_BEEKEEPER_TECH ".258.1";
 
+static void snmp_read_string_progmem(SNMP_PDU &pdu, void *storage) {
+  char temporary[64];
+  strlcpy_P(temporary, storage, sizeof(temporary));
+  status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
+  pdu.type = SNMP_PDU_RESPONSE;
+  pdu.error = status;
+}
+
+static void snmp_read_uptime(SNMP_PDU &pdu, void *storage) {
+  status = pdu.VALUE.encode(SNMP_SYNTAX_TIME_TICKS, millis() / 10);
+  pdu.type = SNMP_PDU_RESPONSE;
+  pdu.error = status;
+}
+
+static void snmp_read_long(SNMP_PDU &pdu, void *storage) {
+  long value = *(long*)storage;
+  status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
+  pdu.type = SNMP_PDU_RESPONSE;
+  pdu.error = status;
+}
+
+static void snmp_read_uint16_t_function(SNMP_PDU &pdu, void *storage) {
+  //typedef void (*log_func_pointer_t)(void *p, int level, const char *format, ...);
+  typedef uint16_t (*uint16_func_pointer_t)();
+  uint16_func_pointer_t foo = storage;
+  int32_t value = foo();
+  //((void(*)())e.fn)();
+  //uint16_t value = (((uint16_t)())storage)();
+  //uint16_t value = (storage)();
+  status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
+  pdu.type = SNMP_PDU_RESPONSE;
+  pdu.error = status;
+}
+
+static void snmp_write_long(SNMP_PDU &pdu, void *storage) {
+  long value;
+  status = pdu.VALUE.decode(&value);
+  snmp_read_long(pdu, storage);
+}
+
+static void snmp_write_brightness(SNMP_PDU &pdu, void *storage) {
+  snmp_write_long(pdu, storage);
+  long value = *(long*)storage;
+  debug(F("Got brightness command: %d"), value);
+  state.standing_brightness = value;
+  mono(value);
+}
+
+static void snmp_trigger_pulse(SNMP_PDU &pdu, void *storage) {
+  long value;
+  status = pdu.VALUE.decode(&value);
+  debug(F("Got pulse command: %d"), value);
+  // TODO using state.ring_at as the base for pulsing animation is probably wrong
+  state.ring_at = millis();
+  state.pulse_until = state.ring_at + (value * 1000);
+
+  snmp_read_string_progmem(pdu, F("Pulse starting"));
+}
+
+static void snmp_write_autopulse(SNMP_PDU &pdu, void *storage) {
+  snmp_write_long(pdu, storage);
+  long value = *(long*)storage;
+  debug(F("Setting automatic pulsing: %d"), value);
+  state.auto_pulse = value * 1000;
+}
+
+static void snmp_trigger_wdreset(SNMP_PDU &pdu, void *storage) {
+  debug(F("Resetting watchdog."));
+  wdt_reset();
+  Agentuino.Trap("Arduino SNMP reset WDT", broadcastIP(), 0);
+  snmp_read_string_progmem(pdu, F("WD Reset"));
+}
+
+static void snmp_trigger_wdenable(SNMP_PDU &pdu, void *storage) {
+  debug(F("Enabling watchdog."));
+  wdt_enable(WDTO_8S);
+  snmp_read_string_progmem(pdu, F("WD Enable"));
+}
+
+static void snmp_trigger_reprogram(SNMP_PDU &pdu, void *storage) {
+  cli();
+  NetEEPROM.writeImgBad();
+  wdt_disable();
+  wdt_enable(WDTO_1S);
+  snmp_read_string_progmem(pdu, F("Reprogramming"));
+  Agentuino.responsePdu(&pdu); // Manually send because we're about to stall the CPU
+  while (1);
+}
+
+static void snmp_trigger_ring(SNMP_PDU &pdu, void *storage) {
+  snmp_read_string_progmem(pdu, F("Ringing"));
+  ring();
+}
+
+static void snmp_trigger_factory_reset(SNMP_PDU &pdu, void *storage) {
+  snmp_read_string_progmem(pdu, F("Factory reset"));
+  NetEEPROM.eraseNetSig();
+}
 
 void myPduReceived()
 {
@@ -25,134 +123,157 @@ void myPduReceived()
       extern uint32_t prevMillis;
   */
 
-  enum oid_keys {
-    OID_SYS_DESCR = 0,
-    OID_SYS_OBJECTID,
-    OID_SYS_UPTIME,
-    OID_SYS_CONTACT,
-    OID_SYS_NAME,
-    OID_SYS_LOCATION,
-    OID_SYS_SERVICES,
-    OID_BT_DB_BRIGHTNESS,
-    OID_BT_DB_PULSE,
-    OID_BT_DB_WDRESET,
-    OID_BT_DB_WDENABLE,
-    OID_BT_DB_AUTOPULSE,
-    OID_BT_DB_REPROGRAM,
-    OID_BT_DB_TRIGGER,
-    OID_BT_RAM_TOTAL,
-    OID_BT_RAM_DATA,
-    OID_BT_RAM_BSS,
-    OID_BT_RAM_HEAP,
-    OID_BT_RAM_STACK,
-    OID_BT_RAM_FREE,
-    OID_BT_FLASH_TOTAL,
-    OID_BT_FLASH_USED,
-    OID_BT_FLASH_FREE,
-    OID_TERMINATOR,
-  };
-
   struct oid_config {
     const char *oid;
-    const byte readonly;
+    void *storage;
+    void (*reader)(SNMP_PDU &pdu, void *storage);
+    void (*writer)(SNMP_PDU &pdu, void *storage);
   };
 
   const struct oid_config all_oids[] = {
-    [OID_SYS_DESCR] = {
+    {
       .oid = PSTR(OID_BASE_SYSTEM ".1.0"),
-      .readonly = true,
+      .storage = Description,
+      .reader = snmp_read_string_progmem,
+      .writer = NULL,
     },
-    [OID_SYS_OBJECTID] = {
+    {
       .oid = PSTR(OID_BASE_SYSTEM ".2.0"),
-      .readonly = true,
+      .storage = ObjectID,
+      .reader = snmp_read_string_progmem,
+      .writer = NULL,
     },
-    [OID_SYS_UPTIME] = {
+    {
       .oid = PSTR(OID_BASE_SYSTEM ".3.0"),
-      .readonly = true,
+      .storage = NULL,
+      .reader = snmp_read_uptime,
+      .writer = NULL,
     },
-    [OID_SYS_CONTACT] = {
+    {
       .oid = PSTR(OID_BASE_SYSTEM ".4.0"),
-      .readonly = true,
+      .storage = Contact,
+      .reader = snmp_read_string_progmem,
+      .writer = NULL,
     },
-    [OID_SYS_NAME] = {
+    {
       .oid = PSTR(OID_BASE_SYSTEM ".5.0"),
-      .readonly = true,
+      .storage = Name,
+      .reader = snmp_read_string_progmem,
+      .writer = NULL,
     },
-    [OID_SYS_LOCATION] = {
+    {
       .oid = PSTR(OID_BASE_SYSTEM ".6.0"),
-      .readonly = true,
+      .storage = Location,
+      .reader = snmp_read_string_progmem,
+      .writer = NULL,
     },
-    [OID_SYS_SERVICES] = {
-      .oid = PSTR(OID_BASE_SYSTEM ".7.0"),
-      .readonly = true,
+    // +++++ ACTIONS
+    { // Ring
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.1.0"),
+      .storage = NULL,
+      .reader = NULL,
+      .writer = snmp_trigger_ring,
     },
-    [OID_BT_DB_BRIGHTNESS] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.0"),
-      .readonly = false,
+    { // Pulse now
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.2.0"),
+      .storage = NULL,
+      .reader = NULL,
+      .writer = snmp_trigger_pulse,
     },
-    [OID_BT_DB_PULSE] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.2.0"),
-      .readonly = false,
+    { // Reprogram
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.3.0"),
+      .storage = NULL,
+      .reader = NULL,
+      .writer = snmp_trigger_reprogram,
     },
-    [OID_BT_DB_WDRESET] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.3.0"),
-      .readonly = false,
+    { // Watchdog Enable
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.4.0"),
+      .storage = NULL,
+      .reader = NULL,
+      .writer = snmp_trigger_wdenable,
     },
-    [OID_BT_DB_WDENABLE] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.4.0"),
-      .readonly = false,
+    { // Watchdog Reset
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.5.0"),
+      .storage = NULL,
+      .reader = NULL,
+      .writer = snmp_trigger_wdreset,
     },
-    [OID_BT_DB_AUTOPULSE] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.5.0"),
-      .readonly = false,
+    // ++++++ SETTINGS
+    { // Brightness
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.2.1.0"),
+      .storage = &(state.standing_brightness),
+      .reader = snmp_read_long,
+      .writer = snmp_write_brightness,
     },
-    [OID_BT_DB_REPROGRAM] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.6.0"),
-      .readonly = false,
+    { // Auto Pulse Length
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.2.2.0"),
+      .storage = &(state.auto_pulse),
+      .reader = snmp_read_long,
+      .writer = snmp_write_autopulse,
     },
-    [OID_BT_DB_TRIGGER] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.7.0"),
-      .readonly = false,
+    // ++++++ MEMORY MONITORING
+    {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".328.1.1.0"),
+      .storage = memory_total,
+      .reader = snmp_read_uint16_t_function,
+      .writer = NULL,
     },
-    [OID_BT_RAM_TOTAL] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.8.0"),
-      .readonly = true,
+    {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".328.1.2.0"),
+      .storage = memory_used,
+      .reader = snmp_read_uint16_t_function,
+      .writer = NULL,
     },
-    [OID_BT_RAM_DATA] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.9.0"),
-      .readonly = true,
+    {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".328.1.3.0"),
+      .storage = memory_free,
+      .reader = snmp_read_uint16_t_function,
+      .writer = NULL,
     },
-    [OID_BT_RAM_BSS] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.10.0"),
-      .readonly = true,
+    {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".328.1.4.0"),
+      .storage = memory_data,
+      .reader = snmp_read_uint16_t_function,
+      .writer = NULL,
     },
-    [OID_BT_RAM_HEAP] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.11.0"),
-      .readonly = true,
+    {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".328.1.5.0"),
+      .storage = memory_bss,
+      .reader = snmp_read_uint16_t_function,
+      .writer = NULL,
     },
-    [OID_BT_RAM_STACK] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.12.0"),
-      .readonly = true,
+    {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".328.1.6.0"),
+      .storage = memory_heap,
+      .reader = snmp_read_uint16_t_function,
+      .writer = NULL,
     },
-    [OID_BT_RAM_FREE] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.13.0"),
-      .readonly = true,
+    {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".328.1.7.0"),
+      .storage = memory_stack,
+      .reader = snmp_read_uint16_t_function,
+      .writer = NULL,
     },
-    [OID_BT_FLASH_TOTAL] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.14.0"),
-      .readonly = true,
+    {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".328.2.1.0"),
+      .storage = flash_total,
+      .reader = snmp_read_uint16_t_function,
+      .writer = NULL,
     },
-    [OID_BT_FLASH_USED] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.15.0"),
-      .readonly = true,
+    {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".328.2.2.0"),
+      .storage = flash_used,
+      .reader = snmp_read_uint16_t_function,
+      .writer = NULL,
     },
-    [OID_BT_FLASH_FREE] = {
-      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.16.0"),
-      .readonly = true,
+    {
+      .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".328.2.3.0"),
+      .storage = flash_free,
+      .reader = snmp_read_uint16_t_function,
+      .writer = NULL,
     },
-    [OID_TERMINATOR] = {
+    {
       .oid = PSTR("1.0"),
-      .readonly = false,
     },
   };
 
@@ -211,190 +332,18 @@ void myPduReceived()
     struct oid_config* oid_selection = &(all_oids[selection]);
 
     if (pdu.type == SNMP_PDU_SET) {
-      if (oid_selection->readonly) {
+      if (oid_selection->reader == NULL) {
         pdu.type = SNMP_PDU_RESPONSE;
         pdu.error = SNMP_ERR_READ_ONLY;
       } else {
-        int value;
-        switch (selection) {
-          case OID_BT_DB_BRIGHTNESS:
-            status = pdu.VALUE.decode(&value);
-            debug(F("Got brightness command: %d"), value);
-            state.standing_brightness = value;
-
-            mono(value);
-
-            status = pdu.VALUE.encode(SNMP_SYNTAX_INT, state.standing_brightness);
-            pdu.type = SNMP_PDU_RESPONSE;
-            pdu.error = status;
-
-            break;
-          case OID_BT_DB_PULSE:
-            status = pdu.VALUE.decode(&value);
-            debug(F("Got pulse command: %d"), value);
-            // TODO using state.ring_at as the base for pulsing animation is probably wrong
-            state.ring_at = millis();
-            state.pulse_until = state.ring_at + (value * 1000);
-            debug(F("Pusing starting at %d until %d"), state.ring_at, state.pulse_until);
-            break;
-          case OID_BT_DB_WDRESET:
-            debug(F("Resetting watchdog."));
-            wdt_reset();
-            Agentuino.Trap("Arduino SNMP reset WDT", broadcastIP(), 0);
-            break;
-          case OID_BT_DB_WDENABLE:
-            debug(F("Enabling watchdog."));
-            wdt_enable(WDTO_8S);
-            break;
-          case OID_BT_DB_AUTOPULSE:
-            status = pdu.VALUE.decode(&value);
-            debug(F("Setting automatic pulsing: %d"), value);
-            state.auto_pulse = value * 1000;
-            break;
-          case OID_BT_DB_REPROGRAM:
-            NetEEPROM.writeImgBad();
-            wdt_disable();
-            wdt_enable(WDTO_2S);
-            while (1);
-            break;
-          case OID_BT_DB_TRIGGER:
-            ring();
-            break;
-          default:
-            pdu.type = SNMP_PDU_RESPONSE;
-            pdu.error = SNMP_ERR_NO_SUCH_NAME;
-            break;
-        }
+        oid_selection->writer(pdu, oid_selection->storage);
       }
       goto respond;
     } else { // SNMP_PDU_GET and SNMP_PDU_GET_NEXT
-
-      char temporary[32];
-      memset(temporary, 0, sizeof(temporary));
-      int32_t value;
-      switch (selection) {
-        case OID_SYS_DESCR:
-          strcpy_P(temporary, Description);
-          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_SYS_OBJECTID:
-          strcpy_P(temporary, ObjectID);
-          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_SYS_UPTIME:
-          status = pdu.VALUE.encode(SNMP_SYNTAX_TIME_TICKS, millis() / 10);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_SYS_CONTACT:
-          strcpy_P(temporary, Contact);
-          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_SYS_NAME:
-          strcpy_P(temporary, Name);
-          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_SYS_LOCATION:
-          strcpy_P(temporary, Location);
-          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_SYS_SERVICES:
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, 72);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_DB_BRIGHTNESS:
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, state.standing_brightness);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_DB_PULSE:
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, 2);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_DB_AUTOPULSE:
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, 3);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_DB_WDRESET:
-        case OID_BT_DB_WDENABLE:
-        case OID_BT_DB_REPROGRAM:
-        case OID_BT_DB_TRIGGER:
-          strcpy_P(temporary, PSTR("Write-only node"));
-          status = pdu.VALUE.encode(SNMP_SYNTAX_OCTETS, temporary);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_RAM_TOTAL:
-          value = memory_total();
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_RAM_DATA:
-          value = memory_data();
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_RAM_BSS:
-          value = memory_bss();
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_RAM_HEAP:
-          value = memory_heap();
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_RAM_STACK:
-          value = memory_stack();
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_RAM_FREE:
-          value = memory_free();
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_FLASH_TOTAL:
-          value = flash_total();
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_FLASH_USED:
-          value = flash_used();
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        case OID_BT_FLASH_FREE:
-          value = flash_free();
-          status = pdu.VALUE.encode(SNMP_SYNTAX_INT, value);
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = status;
-          break;
-        default:
-          pdu.type = SNMP_PDU_RESPONSE;
-          pdu.error = SNMP_ERR_NO_SUCH_NAME;
-          break;
+      if (oid_selection->reader == NULL) {
+        snmp_read_string_progmem(pdu, F("Write-only endpoint"));
+      } else {
+        oid_selection->reader(pdu, oid_selection->storage);
       }
       goto respond;
     }
