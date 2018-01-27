@@ -10,6 +10,7 @@ const uint16_t memory_bss();
 uint16_t memory_heap();
 uint16_t memory_stack();
 const uint16_t memory_total();
+uint16_t memory_used();
 uint16_t memory_free();
 
 const int32_t flash_total();

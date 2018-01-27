@@ -56,8 +56,12 @@ const uint16_t memory_total() {
   return (byte*)RAMEND - &__data_start + 1;
 }
 
+uint16_t memory_used() {
+  return memory_data() - memory_bss() - memory_heap() - memory_stack();
+}
+
 uint16_t memory_free() {
-  return memory_total() - memory_data() - memory_bss() - memory_heap() - memory_stack();
+  return memory_total() - memory_used();
 }
 
 const uint16_t flash_total() {
