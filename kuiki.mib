@@ -1,0 +1,169 @@
+BEEKEEPERTECH DEFINITIONS ::= BEGIN
+
+IMPORTS
+        MODULE-IDENTITY,
+        OBJECT-IDENTITY,
+        enterprises
+                FROM SNMPv2-SMI;
+
+beekeeperTech MODULE-IDENTITY
+        LAST-UPDATED "201801270000Z"
+        ORGANIZATION "Beekeeper Technologies"
+        CONTACT-INFO
+                "Meh"
+
+        DESCRIPTION
+                "Meh"
+
+	::= { enterprises 50174 }
+
+btHarrison          OBJECT IDENTIFIER ::= { beekeeperTech 258 }
+btArduino           OBJECT IDENTIFIER ::= { beekeeperTech 328 }
+
+btHarrisonDoorbell  OBJECT IDENTIFIER ::= { btHarrison 1 }
+
+btHDoorBellActions  OBJECT IDENTIFIER ::= { btHarrisonDoorbell 1 }
+btHDoorBellSettings OBJECT IDENTIFIER ::= { btHarrisonDoorbell 2 }
+
+btHDoorBellActionRing OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btHDoorBellActions 1 }
+
+btHDoorBellActionPulse OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btHDoorBellActions 2 }
+
+btHDoorBellActionReprogram OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btHDoorBellActions 3 }
+
+btHDoorBellActionWatchdogEnable OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btHDoorBellActions 4 }
+
+btHDoorBellActionWatchdogReset OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btHDoorBellActions 5 }
+
+btHDoorBellSetBrightness OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btHDoorBellSettings 1 }
+
+btHDoorBellSetAutoPulse OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btHDoorBellSettings 2 }
+
+btArduinoRAM        OBJECT IDENTIFIER ::= { btArduino 1 }
+btArduinoFlash      OBJECT IDENTIFIER ::= { btArduino 2 }
+btArduinoEEPROM     OBJECT IDENTIFIER ::= { btArduino 3 }
+
+
+btArduinoRAMTotal OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btArduinoRAM 1 }
+
+btArduinoRAMUsed OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btArduinoRAM 2 }
+
+btArduinoRAMFree OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btArduinoRAM 3 }
+
+btArduinoRAMData OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btArduinoRAM 4 }
+
+btArduinoRAMBSS OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btArduinoRAM 5 }
+
+btArduinoRAMHeap OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btArduinoRAM 6 }
+
+btArduinoRAMStack OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btArduinoRAM 7 }
+
+btArduinoFlashTotal OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btArduinoFlash 1 }
+
+btArduinoFlashUsed OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btArduinoFlash 2 }
+
+btArduinoFlashFree OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Meh"
+::= { btArduinoFlash 3 }
+
+END
