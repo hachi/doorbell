@@ -15,6 +15,8 @@ const char Name[]        PROGMEM = "Front Door";
 const char Location[]    PROGMEM = "Hachi's house";
 const char ObjectID[]    PROGMEM = OID_BASE_BEEKEEPER_TECH ".258.1";
 
+const long Zero = 0;
+
 static void snmp_read_string_progmem(SNMP_PDU &pdu, void *storage) {
   char temporary[64];
   strlcpy_P(temporary, storage, sizeof(temporary));
@@ -170,32 +172,32 @@ void myPduReceived()
     // +++++ ACTIONS
     { // Ring
       .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.1.0"),
-      .storage = NULL,
-      .reader = NULL,
+      .storage = &Zero,
+      .reader = snmp_read_long,
       .writer = snmp_trigger_ring,
     },
     { // Pulse now
       .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.2.0"),
-      .storage = NULL,
-      .reader = NULL,
+      .storage = &Zero,
+      .reader = snmp_read_long,
       .writer = snmp_trigger_pulse,
     },
     { // Reprogram
       .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.3.0"),
-      .storage = NULL,
-      .reader = NULL,
+      .storage = &Zero,
+      .reader = snmp_read_long,
       .writer = snmp_trigger_reprogram,
     },
     { // Watchdog Enable
       .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.4.0"),
-      .storage = NULL,
-      .reader = NULL,
+      .storage = &Zero,
+      .reader = snmp_read_long,
       .writer = snmp_trigger_wdenable,
     },
     { // Watchdog Reset
       .oid = PSTR(OID_BASE_BEEKEEPER_TECH ".258.1.1.5.0"),
-      .storage = NULL,
-      .reader = NULL,
+      .storage = &Zero,
+      .reader = snmp_read_long,
       .writer = snmp_trigger_wdreset,
     },
     // ++++++ SETTINGS
